@@ -1,30 +1,79 @@
 import random
 import matplotlib.pyplot as plt
 import pandas as pd
+from selenium import webdriver
+from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from bs4 import BeautifulSoup
+
+# Set up the ChromeDriver service
+service = Service('/Users/aysudalogullari/Downloads/chromedriver-mac-x64/chromedriver')
+
+# Initialize the Chrome driver
+driver = webdriver.Chrome(service=service)
 
 
+# Function to fetch real-time data
+def fetch_teams_data():
+    teams_data = {}
+
+    try:
+        # Open the webpage
+        driver.get('https://en.volleyballworld.com/volleyball/competitions/volleyball-nations-league/2023/standings/women/#advanced')
+
+        # Wait until the table is loaded
+        WebDriverWait(driver, 20).until(
+            EC.presence_of_element_located((By.CLASS_NAME, 'vbw-o-table-wrapper'))
+        )
+
+        # Get the page source and parse with BeautifulSoup
+        page_source = driver.page_source
+        soup = BeautifulSoup(page_source, 'html.parser')
+
+        # Find the table containing the standings
+        table = soup.find('table', class_='vbw-o-table')
+
+        # Extract the rows from the table body
+        rows = table.find('tbody').find_all('tr')
+
+        for row in rows:
+            cells = row.find_all('td')
+            team_name = cells[1].text.strip()
+            matches_total = int(cells[2].text.strip())
+            matches_won = int(cells[3].text.strip())
+            matches_lost = int(cells[4].text.strip())
+            set_ratio = float(cells[14].text.strip())
+            point_ratio = float(cells[17].text.strip())
+
+            teams_data[team_name] = {
+                'Matches Total': matches_total,
+                'Matches Won': matches_won,
+                'Matches Lost': matches_lost,
+                'Set Ratio': set_ratio,
+                'Point Ratio': point_ratio
+            }
+
+        # Print extracted data
+        for team, data in teams_data.items():
+            print(f"Team: {team}, Matches Won: {data['Matches Won']}, Matches Lost: {data['Matches Lost']}, Set Ratio: {data['Set Ratio']}, Point Ratio: {data['Point Ratio']}")
+
+    finally:
+        # Close the web driver
+        driver.quit()
+
+    return teams_data
+
+# Class to manage teams
 class Teams:
-    def __init__(self):
-        # Initializing each national team name with a dictionary to hold wins, losses data is pulled from down below
-        # https://en.volleyballworld.com/volleyball/competitions/volleyball-nations-league/2023/standings/women/#advanced
-        self.teams = {
-            'Poland': {'Wins': 10, 'Losses': 2, 'Set Ratio': 2.461, 'Point Ratio': 1.111},
-            'USA': {'Wins': 10, 'Losses': 2, 'Set Ratio': 2.125, 'Point Ratio': 1.094},
-            'Turkiye': {'Wins': 9, 'Losses': 3, 'Set Ratio': 2.818, 'Point Ratio': 1.185},
-            'Brazil': {'Wins': 8, 'Losses': 4, 'Set Ratio': 1.555, 'Point Ratio': 1.079},
-            'China': {'Wins': 8, 'Losses': 4, 'Set Ratio': 1.526, 'Point Ratio': 1.096},
-            'Italy': {'Wins': 8, 'Losses': 4, 'Set Ratio': 1.260, 'Point Ratio': 1.020},
-            'Japan': {'Wins': 7, 'Losses': 5, 'Set Ratio': 1.350, 'Point Ratio': 1.091},
-            'Germany': {'Wins': 7, 'Losses': 5, 'Set Ratio': 1.130, 'Point Ratio': 1.007},
-            'Serbia': {'Wins': 6, 'Losses': 6, 'Set Ratio': 1.000, 'Point Ratio': 1.029},
-            'Canada': {'Wins': 6, 'Losses': 6, 'Set Ratio': 1.000, 'Point Ratio': 0.987},
-        }
-        self.total_Games = 12
+    def __init__(self, teams_data):
+        self.teams = teams_data
 
     def get_teams(self):
         return self.teams
 
-
+# Class to manage matches
 class Match:
     def __init__(self, teams):
         self.teams = teams
@@ -38,21 +87,21 @@ class Match:
         away_team = random.choice(team_keys)
         return home_team, away_team
 
-
+# Class to manage the tournament
 class VNLTournament:
     def __init__(self, teams):
         self.teams = teams
         # Generate 12 unique matches
-        self.matches = [Match(teams) for i in range(12)]
+        self.matches = [Match(teams) for _ in range(12)]
 
-    # source for the formula https://sharmaabhishekk.github.io/projects/win-probability-implementation
+    # Source for the formula https://sharmaabhishekk.github.io/projects/win-probability-implementation
     def predictability_formula(self, home_team, away_team):
-        wins_squared_home = self.teams[home_team]['Wins'] ** 2
-        wins_squared_away = self.teams[away_team]['Wins'] ** 2
-        strength_home = self.teams[home_team]['Wins'] / 12
-        strength_away = self.teams[away_team]['Wins'] / 12
-        home_predictability = strength_home ** 2 / (wins_squared_home + 12)
-        away_predictability = strength_away ** 2 / (wins_squared_away + 12)
+        wins_squared_home = self.teams[home_team]['Matches Won'] ** 2
+        wins_squared_away = self.teams[away_team]['Matches Won'] ** 2
+        strength_home = self.teams[home_team]['Matches Won'] / self.teams[home_team]['Matches Total']
+        strength_away = self.teams[away_team]['Matches Won'] / self.teams[away_team]['Matches Total']
+        home_predictability = strength_home ** 2 / (wins_squared_home + 1)
+        away_predictability = strength_away ** 2 / (wins_squared_away + 1)
         return home_team, home_predictability, away_team, away_predictability
 
     def run_tournament(self):
@@ -70,10 +119,15 @@ class VNLTournament:
             print(f"Away Predictability: {away_pred * 100:.2f}%\n")
         return results
 
-
 if __name__ == '__main__':
-    teams = Teams()
-    tournament = VNLTournament(teams.teams)
+    # Fetch real-time data
+    teams_data = fetch_teams_data()
+
+    # Initialize teams with real-time data
+    teams = Teams(teams_data)
+
+    # Run the tournament with real-time data
+    tournament = VNLTournament(teams.get_teams())
     match_results = tournament.run_tournament()
     df = pd.DataFrame(match_results)
 
@@ -85,4 +139,6 @@ if __name__ == '__main__':
     ax.set_ylabel('Predictability (%)')
     ax.set_xticklabels(df['Match'].tolist(), rotation=45)
     plt.tight_layout()
+    plt.show()
+
     plt.show()
