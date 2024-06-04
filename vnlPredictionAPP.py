@@ -7,13 +7,14 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from bs4 import BeautifulSoup
+import requests
+import json
 
 # Set up the ChromeDriver service
 service = Service('/Users/aysudalogullari/Downloads/chromedriver-mac-x64/chromedriver')
 
 # Initialize the Chrome driver
 driver = webdriver.Chrome(service=service)
-
 
 # Function to fetch real-time data
 def fetch_teams_data():
@@ -65,7 +66,45 @@ def fetch_teams_data():
 
     return teams_data
 
-# Class to manage teams
+def fetch_schedule(year, month):
+    base_url = 'https://en.volleyballworld.com/api/v1/globalschedule/competitions'
+    url = f'{base_url}/{year}/{month}'
+
+    response = requests.get(url)
+    if response.status_code == 200:
+        schedule_data = response.json()
+        return schedule_data
+    else:
+        print(f"Failed to retrieve data: {response.status_code}")
+        return None
+
+def parse_schedule(schedule_data):
+    teams_schedule = {}
+
+    for match in schedule_data.get('matches', []):
+        home_team = match.get('home_team', {}).get('name')
+        away_team = match.get('away_team', {}).get('name')
+        home_score = match.get('home_score')
+        away_score = match.get('away_score')
+        match_date = match.get('date')
+
+        if home_team not in teams_schedule:
+            teams_schedule[home_team] = {'Matches Played': 0, 'Matches Won': 0, 'Matches Lost': 0}
+        if away_team not in teams_schedule:
+            teams_schedule[away_team] = {'Matches Played': 0, 'Matches Won': 0, 'Matches Lost': 0}
+
+        teams_schedule[home_team]['Matches Played'] += 1
+        teams_schedule[away_team]['Matches Played'] += 1
+
+        if home_score > away_score:
+            teams_schedule[home_team]['Matches Won'] += 1
+            teams_schedule[away_team]['Matches Lost'] += 1
+        else:
+            teams_schedule[home_team]['Matches Lost'] += 1
+            teams_schedule[away_team]['Matches Won'] += 1
+
+    return teams_schedule
+
 class Teams:
     def __init__(self, teams_data):
         self.teams = teams_data
@@ -73,28 +112,16 @@ class Teams:
     def get_teams(self):
         return self.teams
 
-# Class to manage matches
 class Match:
-    def __init__(self, teams):
-        self.teams = teams
-        self.home_team, self.away_team = self.choose_random_match()
+    def __init__(self, home_team, away_team):
+        self.home_team = home_team
+        self.away_team = away_team
 
-    def choose_random_match(self):
-        team_keys = list(self.teams.keys())
-        random.shuffle(team_keys)  # Shuffle team list to ensure randomness
-        home_team = random.choice(team_keys)
-        team_keys.remove(home_team)  # Remove the chosen home team to ensure different away team
-        away_team = random.choice(team_keys)
-        return home_team, away_team
-
-# Class to manage the tournament
 class VNLTournament:
     def __init__(self, teams):
         self.teams = teams
-        # Generate 12 unique matches
-        self.matches = [Match(teams) for _ in range(12)]
+        self.matches = [Match(random.choice(list(teams.keys())), random.choice(list(teams.keys()))) for _ in range(12)]
 
-    # Source for the formula https://sharmaabhishekk.github.io/projects/win-probability-implementation
     def predictability_formula(self, home_team, away_team):
         wins_squared_home = self.teams[home_team]['Matches Won'] ** 2
         wins_squared_away = self.teams[away_team]['Matches Won'] ** 2
@@ -113,7 +140,6 @@ class VNLTournament:
                 'Home Predictability': home_pred * 100,
                 'Away Predictability': away_pred * 100
             })
-            # Print each match's result to the console
             print(f"Match: {home} vs {away}")
             print(f"Home Predictability: {home_pred * 100:.2f}%")
             print(f"Away Predictability: {away_pred * 100:.2f}%\n")
@@ -139,6 +165,4 @@ if __name__ == '__main__':
     ax.set_ylabel('Predictability (%)')
     ax.set_xticklabels(df['Match'].tolist(), rotation=45)
     plt.tight_layout()
-    plt.show()
-
     plt.show()
